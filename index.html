@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Painel Administrativo - Divino Açaí</title>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+
+<style>
+body{margin:0;font-family:'Segoe UI',Arial;background:#f4f4f4}
+header{background:linear-gradient(135deg,#5e1675,#e91e63);color:#fff;padding:15px;text-align:center}
+.container{max-width:1200px;margin:auto;padding:15px}
+.card{background:#fff;padding:15px;border-radius:12px;box-shadow:0 4px 10px rgba(0,0,0,.1);margin-bottom:15px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:15px}
+input,select,button{width:100%;padding:10px;margin-top:6px;border-radius:8px;border:1px solid #ccc}
+button{background:#e91e63;color:#fff;border:none;cursor:pointer}
+.resumo{text-align:center;font-size:18px;font-weight:bold}
+.lista{max-height:350px;overflow:auto}
+.venda{border-bottom:1px solid #ddd;padding:6px 0;font-size:14px}
+.acoes button{width:auto;margin-left:5px;background:#555}
+.rank-item{padding:6px;border-bottom:1px solid #ddd}
+</style>
+</head>
+
+<body>
+
+<header>
+<h1>📊 Painel Administrativo</h1>
+<p>Divino Açaí VV</p>
+</header>
+
+<div class="container">
+
+<!-- REGISTRO -->
+<div class="card">
+<h3>📝 Registrar Venda</h3>
+<div class="grid">
+<select id="produto"></select>
+<select id="tamanho"></select>
+<input id="quantidade" type="number" min="1" value="1">
+<select id="pagamento">
+<option>Pix</option><option>Dinheiro</option><option>Cartão</option>
+</select>
+</div>
+<p><b>Total:</b> R$ <span id="valorFinal">0.00</span></p>
+<button onclick="registrarVenda()">Registrar Venda</button>
+</div>
+
+<!-- RESUMO -->
+<div class="grid">
+<div class="card resumo">💰 Hoje<br>R$ <span id="totalHoje">0.00</span></div>
+<div class="card resumo">📆 Semana<br>R$ <span id="totalSemana">0.00</span></div>
+<div class="card resumo">🗓️ Mês<br>R$ <span id="totalMes">0.00</span></div>
+<div class="card resumo">🍧 Açaís<br><span id="qtdMes">0</span></div>
+</div>
+
+<!-- AÇÕES -->
+<div class="grid">
+<div class="card"><button onclick="exportarPDF()">📄 Exportar PDF</button></div>
+<div class="card"><button onclick="exportarBackup()">☁️ Backup</button></div>
+<div class="card"><input type="file" onchange="importarBackup(event)"></div>
+</div>
+
+<!-- GRÁFICOS -->
+<div class="grid">
+<div class="card"><canvas id="graficoPagamento"></canvas></div>
+<div class="card"><canvas id="graficoDias"></canvas></div>
+</div>
+
+<!-- RANKING -->
+<div class="card">
+<h3>🏆 Ranking de Sabores</h3>
+<div id="ranking"></div>
+</div>
+
+<!-- LISTA -->
+<div class="card">
+<h3>📋 Histórico de Vendas</h3>
+<div class="lista" id="listaVendas"></div>
+</div>
+
+</div>
+
+<script>
+const produtos={
+"Morango Love 🍓":{300:15,500:20},
+"Tradicional":{300:15,500:20},
+"Banana 🍌":{300:15,500:20},
+"Leite Ninho 🥛":{300:15,500:20},
+"Chocolate 🍫":{300:15,500:20},
+"Paçoca 🥜":{300:15,500:20}
+};
+
+const produtoSel=document.getElementById("produto");
+const tamanhoSel=document.getElementById("tamanho");
+const qtdInput=document.getElementById("quantidade");
+const valorFinal=document.getElementById("valorFinal");
+
+produtoSel.innerHTML="<option value=''>Produto</option>"+
+Object.keys(produtos).map(p=>`<option>${p}</option>`).join("");
+
+produtoSel.onchange=()=>{
+tamanhoSel.innerHTML="<option>Tamanho</option>";
+if(produtoSel.value){
+Object.keys(produtos[produtoSel.value]).forEach(t=>{
+tamanhoSel.innerHTML+=`<option value="${t}">${t}ml</option>`;
+});
+}
+calcular();
+};
+
+[tamanhoSel,qtdInput].forEach(e=>e.oninput=calcular);
+
+function calcular(){
+if(produtoSel.value&&tamanhoSel.value){
+valorFinal.innerText=(produtos[produtoSel.value][tamanhoSel.value]*qtdInput.value).toFixed(2);
+}else valorFinal.innerText="0.00";
+}
+
+let vendas=JSON.parse(localStorage.getItem("vendas"))||[];
+
+function registrarVenda(){
+if(!produtoSel.value||!tamanhoSel.value)return alert("Selecione produto e tamanho");
+vendas.push({
+produto:produtoSel.value,
+tamanho:tamanhoSel.value,
+quantidade:+qtdInput.value,
+pagamento:pagamento.value,
+valor:+valorFinal.innerText,
+data:new Date().toISOString()
+});
+salvar();
+}
+
+function salvar(){
+localStorage.setItem("vendas",JSON.stringify(vendas));
+atualizar();
+}
+
+function excluirVenda(i){
+if(confirm("Excluir esta venda?")){
+vendas.splice(i,1);
+salvar();
+}
+}
+
+function editarVenda(i){
+const v=vendas[i];
+produtoSel.value=v.produto;
+produtoSel.onchange();
+tamanhoSel.value=v.tamanho;
+qtdInput.value=v.quantidade;
+pagamento.value=v.pagamento;
+valorFinal.innerText=v.valor.toFixed(2);
+vendas.splice(i,1);
+salvar();
+}
+
+function exportarBackup(){
+const blob=new Blob([JSON.stringify(vendas)],{type:"application/json"});
+const a=document.createElement("a");
+a.href=URL.createObjectURL(blob);
+a.download="backup-vendas.json";
+a.click();
+}
+
+function importarBackup(e){
+const r=new FileReader();
+r.onload=()=>{vendas=JSON.parse(r.result);salvar();}
+r.readAsText(e.target.files[0]);
+}
+
+let graficoPagamento,graficoDias;
+
+function atualizar(){
+const hoje=new Date();
+let totalHoje=0,totalSemana=0,totalMes=0,qtdMes=0;
+let pagamentos={Pix:0,Dinheiro:0,Cartão:0};
+let porDia={},ranking={};
+
+listaVendas.innerHTML="";
+rankingEl.innerHTML="";
+
+vendas.forEach((v,i)=>{
+const d=new Date(v.data);
+const diff=(hoje-d)/86400000;
+if(d.toDateString()===hoje.toDateString())totalHoje+=v.valor;
+if(diff<=7)totalSemana+=v.valor;
+if(d.getMonth()===hoje.getMonth()){totalMes+=v.valor;qtdMes+=v.quantidade;}
+pagamentos[v.pagamento]+=v.valor;
+porDia[d.getDate()]=(porDia[d.getDate()]||0)+v.valor;
+ranking[v.produto]=(ranking[v.produto]||0)+v.quantidade;
+
+listaVendas.innerHTML+=`
+<div class="venda">
+${d.toLocaleDateString()} • ${v.produto} ${v.tamanho}ml x${v.quantidade} • R$ ${v.valor.toFixed(2)}
+<span class="acoes">
+<button onclick="editarVenda(${i})">✏️</button>
+<button onclick="excluirVenda(${i})">🗑️</button>
+</span>
+</div>`;
+});
+
+Object.entries(ranking).sort((a,b)=>b[1]-a[1])
+.forEach(r=>rankingEl.innerHTML+=`<div class="rank-item">${r[0]} — ${r[1]}</div>`);
+
+totalHojeEl.innerText=totalHoje.toFixed(2);
+totalSemanaEl.innerText=totalSemana.toFixed(2);
+totalMesEl.innerText=totalMes.toFixed(2);
+qtdMesEl.innerText=qtdMes;
+
+atualizarGraficos(pagamentos,porDia);
+}
+
+function atualizarGraficos(p,pd){
+if(graficoPagamento)graficoPagamento.destroy();
+if(graficoDias)graficoDias.destroy();
+
+graficoPagamento=new Chart(graficoPagamentoEl,{type:'pie',data:{labels:Object.keys(p),datasets:[{data:Object.values(p)}]}});
+graficoDias=new Chart(graficoDiasEl,{type:'bar',data:{labels:Object.keys(pd),datasets:[{data:Object.values(pd)}]}});
+}
+
+function exportarPDF(){
+const {jsPDF}=window.jspdf;
+const pdf=new jsPDF();
+let y=10;
+pdf.text("Relatório de Vendas - Divino Açaí",10,y);y+=10;
+vendas.forEach(v=>{
+pdf.text(`${new Date(v.data).toLocaleDateString()} ${v.produto} ${v.tamanho}ml x${v.quantidade} R$ ${v.valor}`,10,y);
+y+=7;if(y>280){pdf.addPage();y=10;}
+});
+pdf.save("relatorio-vendas.pdf");
+}
+
+const totalHojeEl=document.getElementById("totalHoje");
+const totalSemanaEl=document.getElementById("totalSemana");
+const totalMesEl=document.getElementById("totalMes");
+const qtdMesEl=document.getElementById("qtdMes");
+const listaVendas=document.getElementById("listaVendas");
+const rankingEl=document.getElementById("ranking");
+const graficoPagamentoEl=document.getElementById("graficoPagamento");
+const graficoDiasEl=document.getElementById("graficoDias");
+
+atualizar();
+</script>
+
+</body>
+</html>
